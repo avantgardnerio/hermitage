@@ -102,4 +102,16 @@ class Postgres {
         assertQuery(stmt2, "select * from test; -- T2. Still shows 1 => 10")
         stmt2.execute("commit; -- T2")
     }
+
+    @Test
+    fun g1b() {
+        stmt1.execute("begin; set transaction isolation level read committed; -- T1")
+        stmt2.execute("begin; set transaction isolation level read committed; -- T2")
+        stmt1.executeUpdate("update test set value = 101 where id = 1; -- T1")
+        assertQuery(stmt2, "select * from test; -- T2. Still shows 1 => 10")
+        stmt1.executeUpdate("update test set value = 11 where id = 1; -- T1")
+        stmt1.execute("commit; -- T1")
+        assertQuery(stmt2, "select * from test; -- T2. Now shows 1 => 11")
+        stmt2.execute("commit; -- T2")
+    }
 }
