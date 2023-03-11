@@ -3,6 +3,7 @@ package com.github.ept
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestTemplate
 import java.sql.Connection
 import java.sql.Statement
 import java.util.*
@@ -296,6 +297,37 @@ class Postgres {
         }
         assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
         execute("abort; -- T1. There's nothing else we can do, this transaction has failed")
+    }
+
+    @Test
+    fun `G2-item - RepeatableRead does not prevent Write Skew`() {
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        execute("select * from test where id in (1,2); -- T1")
+        execute("select * from test where id in (1,2); -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 21 where id = 2; -- T2")
+        execute("commit; -- T1")
+        execute("commit; -- T2")
+        assertQuery("select * from test; -- either Shows 1 => 11, 2 => 21")
+    }
+
+    @Test
+    fun `G2-item - Serializable prevents write skew`() {
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("begin; set transaction isolation level serializable; -- T2")
+        execute("select * from test where id in (1,2); -- T1")
+        execute("select * from test where id in (1,2); -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 21 where id = 2; -- T2")
+        execute("commit; -- T1")
+        var ex: Exception? = null
+        try {
+            execute("commit; -- T2. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
     // --- helpers
