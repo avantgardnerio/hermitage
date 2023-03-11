@@ -28,6 +28,38 @@ class Postgres {
         stmt2 = con2.createStatement()
     }
 
+    fun assertQuery(stmt: Statement, sql: String) {
+        val expected = commentToMap(sql)
+        val actual = queryToMap(stmt, sql)
+        assertEquals(expected, actual)
+    }
+
+    fun queryToMap(stmt: Statement, sql: String): Map<Int, Int> {
+        val res = mutableMapOf<Int, Int>()
+        val stmts = sql.split(";")
+        stmt.executeQuery(stmts.first()).use { rs ->
+            while (rs.next()) {
+                val k = rs.getInt("id")
+                val v = rs.getInt("value")
+                res[k] = v
+            }
+        }
+        return res
+    }
+
+    fun commentToMap(sql: String): Map<Int, Int> {
+        val parts = sql.split("--")
+        if (parts.size < 2) return mapOf()
+        val comment = parts[1]
+        val re = """(?<k>\d+)\s*=>\s*(?<v>\d+)""".toRegex()
+        val res = re.findAll(comment).map { res ->
+            val k = res.groups["k"]!!.value.toInt()
+            val v = res.groups["v"]!!.value.toInt()
+            k to v
+        }.toMap()
+        return res
+    }
+
     @BeforeEach
     fun setup() {
         stmt1.execute("drop table if exists test")
@@ -51,25 +83,11 @@ class Postgres {
         assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
         stmt1.execute("commit; -- T1. This unblocks T2")
         t2.join()
-        val rs = stmt1.executeQuery("select * from test -- T1. Shows 1 => 11, 2 => 21")
-        assertTrue(rs.next())
-        assertEquals(1, rs.getInt("id"))
-        assertEquals(11, rs.getInt("value"))
-        assertTrue(rs.next())
-        assertEquals(2, rs.getInt("id"))
-        assertEquals(21, rs.getInt("value"))
-        assertFalse(rs.next())
+        assertQuery(stmt1, "select * from test; -- T1. Shows 1 => 11, 2 => 21")
         assertEquals(1, stmt2.executeUpdate("update test set value = 22 where id = 2; -- T2"))
         stmt2.execute("commit; -- T2")
         arrayOf(stmt1, stmt2).forEach { stmt ->
-            val rs = stmt.executeQuery("select * from test -- either. Shows 1 => 12, 2 => 22")
-            assertTrue(rs.next())
-            assertEquals(1, rs.getInt("id"))
-            assertEquals(12, rs.getInt("value"))
-            assertTrue(rs.next())
-            assertEquals(2, rs.getInt("id"))
-            assertEquals(22, rs.getInt("value"))
-            assertFalse(rs.next())
+            assertQuery(stmt, "select * from test; -- either. Shows 1 => 12, 2 => 22")
         }
     }
 }
