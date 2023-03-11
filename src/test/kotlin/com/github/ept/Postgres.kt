@@ -3,14 +3,12 @@ package com.github.ept
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.TestTemplate
 import java.sql.Connection
 import java.sql.Statement
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class Postgres {
@@ -330,6 +328,57 @@ class Postgres {
         assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
+    @Test
+    fun `G2 - RepeatableRead does not prevent anti-dependency cycles`() {
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        execute("select * from test where value % 3 = 0; -- T1")
+        execute("select * from test where value % 3 = 0; -- T2")
+        execute("insert into test (id, value) values(3, 30); -- T1")
+        execute("insert into test (id, value) values(4, 42); -- T2")
+        execute("commit; -- T1")
+        execute("commit; -- T2")
+        assertQuery("select * from test where value % 3 = 0; -- Either. Returns 3 => 30, 4 => 42")
+    }
+
+    @Test
+    fun `G2 - Serializable prevents Anti-Dependency Cycles`() {
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("begin; set transaction isolation level serializable; -- T2")
+        execute("select * from test where value % 3 = 0; -- T1")
+        execute("select * from test where value % 3 = 0; -- T2")
+        execute("insert into test (id, value) values(3, 30); -- T1")
+        execute("insert into test (id, value) values(4, 42); -- T2")
+        execute("commit; -- T1")
+        var ex: Exception? = null
+        try {
+            execute("commit; -- T2. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
+    }
+
+    @Test
+    fun `G2 - Serializable prevents 2 edge Anti-Dependency Cycles`() {
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("select * from test; -- T1. Shows 1 => 10, 2 => 20")
+        execute("begin; set transaction isolation level serializable; -- T2")
+        execute("update test set value = value + 5 where id = 2; -- T2")
+        execute("commit; -- T2")
+        execute("begin; set transaction isolation level serializable; -- T3")
+        execute("select * from test; -- T3. Shows 1 => 10, 2 => 25")
+        execute("commit; -- T3")
+        var ex: Exception? = null
+        try {
+            execute("update test set value = 0 where id = 1; -- T1. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
+        execute("abort; -- T1. There's nothing else we can do, this transaction has failed")
+    }
+
     // --- helpers
     fun execute(sql: String) {
         val stmts = getStatements(sql)
@@ -341,10 +390,10 @@ class Postgres {
     fun getStatements(sql: String): Array<Statement> {
         val re = """--\s*(\w+)""".toRegex()
         val stmtIdx = re.find(sql)!!.groups[1]!!.value
-        val stmts = when (stmtIdx) {
-            "T1" -> arrayOf(stmts[0])
-            "T2" -> arrayOf(stmts[1])
-            "T3" -> arrayOf(stmts[2])
+        val stmts = when (stmtIdx.lowercase(Locale.getDefault())) {
+            "t1" -> arrayOf(stmts[0])
+            "t2" -> arrayOf(stmts[1])
+            "t3" -> arrayOf(stmts[2])
             "either" -> arrayOf(stmts[0], stmts[1])
             else -> throw Exception("Invalid transaction number!")
         }
