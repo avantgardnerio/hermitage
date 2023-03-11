@@ -31,7 +31,8 @@ class Postgres {
     fun assertQuery(stmt: Statement, sql: String) {
         val expected = commentToMap(sql)
         val actual = queryToMap(stmt, sql)
-        assertEquals(expected, actual)
+        val compare = actual.filterKeys { expected.containsKey(it) }
+        assertEquals(expected, compare)
     }
 
     fun queryToMap(stmt: Statement, sql: String): Map<Int, Int> {
@@ -89,5 +90,16 @@ class Postgres {
         arrayOf(stmt1, stmt2).forEach { stmt ->
             assertQuery(stmt, "select * from test; -- either. Shows 1 => 12, 2 => 22")
         }
+    }
+
+    @Test
+    fun g1a() {
+        stmt1.execute("begin; set transaction isolation level read committed; -- T1")
+        stmt2.execute("begin; set transaction isolation level read committed; -- T2")
+        stmt1.executeUpdate("update test set value = 101 where id = 1; -- T1")
+        assertQuery(stmt2, "select * from test; -- T2. Still shows 1 => 10")
+        stmt1.execute("abort;  -- T1")
+        assertQuery(stmt2, "select * from test; -- T2. Still shows 1 => 10")
+        stmt2.execute("commit; -- T2")
     }
 }
