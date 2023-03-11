@@ -13,6 +13,9 @@ open class Base {
 
     init {
         val driver = org.postgresql.Driver()
+        // https://www.cockroachlabs.com/docs/releases/index.html#v22-2
+        // ./cockroach start-single-node --insecure
+        // jdbc:postgresql://127.0.0.1:26257/defaultdb?sslmode=disable
         val url = "jdbc:postgresql://localhost:5432/postgres"
         val props = Properties()
         props.setProperty("user", "postgres")
