@@ -4,7 +4,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.sql.Connection
 import java.sql.Statement
-import java.util.Properties
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -53,6 +53,27 @@ class Postgres {
         execute("update test set value = 22 where id = 2; -- T2")
         execute("commit; -- T2")
         assertQuery("select * from test; -- either. Shows 1 => 12, 2 => 22")
+    }
+
+    @Test
+    fun `pmp repeatable read write predicate`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("update test set value = value + 10; -- T1")
+
+        val t2 = Thread {
+            execute("delete from test where value = 20;  -- T2, BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+
+        assertQuery("select * from test where value = 20; -- T2, returns 1 => 20 (despite ostensibly having been deleted)")
+        execute("commit; -- T2")
     }
 
     @Test
@@ -118,6 +139,28 @@ class Postgres {
         execute("commit; -- T2")
     }
 
+    @Test
+    fun pmpReadCommitted() {
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing") // TODO: assert nothing
+        execute("insert into test (id, value) values(3, 30); -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where value % 3 = 0; -- T1. Returns the newly inserted row returns 3 => 30")
+        execute("commit; -- T1")
+    }
+
+    @Test
+    fun pmpRepeatableRead() {
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
+        execute("commit; -- T1")
+    }
+
     // --- helpers
     fun execute(sql: String) {
         val stmts = getStatements(sql)
@@ -144,7 +187,10 @@ class Postgres {
         val stmts = getStatements(sql)
         stmts.forEach { stmt ->
             val actual = queryToMap(stmt, sql)
-            val compare = actual.filterKeys { expected.containsKey(it) }
+            val compare = when (sql.lowercase(Locale.getDefault()).contains("returns nothing")) {
+                true -> actual
+                false -> actual.filterKeys { expected.containsKey(it) }
+            }
             assertEquals(expected, compare)
         }
     }
