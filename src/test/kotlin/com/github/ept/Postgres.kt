@@ -9,6 +9,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class Postgres {
@@ -103,7 +104,7 @@ class Postgres {
     }
 
     @Test
-    fun p4() {
+    fun `p4 ReadCommitted`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -123,6 +124,35 @@ class Postgres {
 
         execute("commit; -- T2")
         assertQuery("select * from test where id = 1; -- either 1 => 11")
+    }
+
+    @Test
+    fun `p4 RepeatableRead`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        execute("select * from test where id = 1; -- T1")
+        execute("select * from test where id = 1; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+
+        val t2 = Thread {
+            var ex: Exception? = null
+            try {
+                execute("update test set value = 11 where id = 1; -- T2, BLOCKS")
+            } catch (e: Exception) {
+                assertTrue(e.message!!.contains("could not serialize access due to concurrent update"))
+                ex = e
+            }
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+            assertNotNull(ex)
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. T2 now prints out ERROR: could not serialize access due to concurrent update")
+        t2.join()
+
+        execute("abort;  -- T2. There's nothing else we can do, this transaction has failed")
     }
 
     @Test
