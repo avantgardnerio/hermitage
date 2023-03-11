@@ -1,5 +1,6 @@
 package com.github.ept
 
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.sql.Connection
@@ -31,6 +32,11 @@ class Postgres {
         stmts[0].executeUpdate("insert into test (id, value) values (1, 10), (2, 20)")
     }
 
+    @AfterEach
+    fun cleanup() {
+        stmts.forEach { it.execute("abort") }
+    }
+
     @Test
     fun g0() {
         val wasCalled = AtomicBoolean(false)
@@ -56,7 +62,27 @@ class Postgres {
     }
 
     @Test
-    fun `pmp repeatable read write predicate`() {
+    fun `pmp ReadCommitted write predicate`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("update test set value = value + 10; -- T1")
+        val t2 = Thread {
+            execute("delete from test where value = 20;  -- T2, BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+
+        assertQuery("select * from test where value = 20; -- T2, returns 1 => 20 (despite ostensibly having been deleted)")
+        execute("commit; -- T2")
+    }
+
+    @Test
+    fun `pmp RepeatableRead write predicate`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -74,6 +100,29 @@ class Postgres {
 
         assertQuery("select * from test where value = 20; -- T2, returns 1 => 20 (despite ostensibly having been deleted)")
         execute("commit; -- T2")
+    }
+
+    @Test
+    fun p4() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("select * from test where id = 1; -- T1")
+        execute("select * from test where id = 1; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+
+        val t2 = Thread {
+            execute("update test set value = 11 where id = 1; -- T2, BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2, so T1's update is overwritten")
+        t2.join()
+
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 1; -- either 1 => 11")
     }
 
     @Test
@@ -187,7 +236,7 @@ class Postgres {
         val stmts = getStatements(sql)
         stmts.forEach { stmt ->
             val actual = queryToMap(stmt, sql)
-            val compare = when (sql.lowercase(Locale.getDefault()).contains("returns nothing")) {
+            val compare = when (expected.isEmpty()) {
                 true -> actual
                 false -> actual.filterKeys { expected.containsKey(it) }
             }
