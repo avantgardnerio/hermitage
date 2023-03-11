@@ -145,6 +145,7 @@ class Postgres {
             }
             assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
             assertNotNull(ex)
+            // TODO: assertions in thread only log, they don't break the tests!
         }
         t2.start()
         Thread.sleep(500)
