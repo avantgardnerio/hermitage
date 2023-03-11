@@ -63,7 +63,7 @@ class Postgres {
     }
 
     @Test
-    fun `pmp ReadCommitted write predicate`() {
+    fun `pmp - ReadCommitted write predicate`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -83,7 +83,7 @@ class Postgres {
     }
 
     @Test
-    fun `pmp RepeatableRead write predicate`() {
+    fun `pmp - RepeatableRead write predicate`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -104,7 +104,7 @@ class Postgres {
     }
 
     @Test
-    fun `p4 ReadCommitted`() {
+    fun `p4 - ReadCommitted`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -127,7 +127,7 @@ class Postgres {
     }
 
     @Test
-    fun `p4 RepeatableRead`() {
+    fun `p4 - RepeatableRead`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level repeatable read; -- T1")
         execute("begin; set transaction isolation level repeatable read; -- T2")
@@ -135,16 +135,14 @@ class Postgres {
         execute("select * from test where id = 1; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
 
+        var ex: Exception? = null
         val t2 = Thread {
-            var ex: Exception? = null
             try {
                 execute("update test set value = 11 where id = 1; -- T2, BLOCKS")
             } catch (e: Exception) {
-                assertTrue(e.message!!.contains("could not serialize access due to concurrent update"))
                 ex = e
             }
             assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
-            assertNotNull(ex)
             // TODO: assertions in thread only log, they don't break the tests!
         }
         t2.start()
@@ -152,6 +150,7 @@ class Postgres {
         assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
         execute("commit; -- T1. T2 now prints out ERROR: could not serialize access due to concurrent update")
         t2.join()
+        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
 
         execute("abort;  -- T2. There's nothing else we can do, this transaction has failed")
     }
@@ -220,7 +219,7 @@ class Postgres {
     }
 
     @Test
-    fun pmpReadCommitted() {
+    fun `pmp - ReadCommitted`() {
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
         assertQuery("select * from test where value = 30; -- T1. Returns nothing") // TODO: assert nothing
@@ -231,7 +230,7 @@ class Postgres {
     }
 
     @Test
-    fun pmpRepeatableRead() {
+    fun `pmp - RepeatableRead`() {
         execute("begin; set transaction isolation level repeatable read; -- T1")
         execute("begin; set transaction isolation level repeatable read; -- T2")
         assertQuery("select * from test where value = 30; -- T1. Returns nothing")
@@ -239,6 +238,64 @@ class Postgres {
         execute("commit; -- T2")
         assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
         execute("commit; -- T1")
+    }
+
+    @Test
+    fun `G-single - ReadCommitted does not prevent Read Skew`() {
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        assertQuery("select * from test where id = 1; -- T1. Shows 1 => 10")
+        execute("select * from test where id = 1; -- T2")
+        execute("select * from test where id = 2; -- T2")
+        execute("update test set value = 12 where id = 1; -- T2")
+        execute("update test set value = 18 where id = 2; -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 2; -- T1. Shows 2 => 18")
+        execute("commit; -- T1")
+    }
+
+    @Test
+    fun `G-single - RepeatableRead prevents Read Skew`() {
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        assertQuery("select * from test where id = 1; -- T1. Shows 1 => 10")
+        execute("select * from test where id = 1; -- T2")
+        execute("select * from test where id = 2; -- T2")
+        execute("update test set value = 12 where id = 1; -- T2")
+        execute("update test set value = 18 where id = 2; -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 2; -- T1. Shows 2 => 20")
+        execute("commit; -- T1")
+    }
+
+    @Test
+    fun `G-single - RepeatableRead prevents Read Skew with predicate`() {
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        execute("select * from test where value % 5 = 0; -- T1")
+        execute("update test set value = 12 where value = 10; -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where value % 3 = 0; -- T1. Returns nothing")
+        execute("commit; -- T1")
+    }
+
+    @Test
+    fun `G-single - RepeatableRead prevents Read Skew with write predicate`() {
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        execute("select * from test where id = 1; -- T1. Shows 1 => 10")
+        execute("select * from test; -- T2")
+        execute("update test set value = 12 where id = 1; -- T2")
+        execute("update test set value = 18 where id = 2; -- T2")
+        execute("commit; -- T2")
+        var ex: Exception? = null
+        try {
+            execute("delete from test where value = 20; -- T1. Prints ERROR: could not serialize access due to concurrent update")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
+        execute("abort; -- T1. There's nothing else we can do, this transaction has failed")
     }
 
     // --- helpers
