@@ -41,4 +41,16 @@ class FlightSql : Base(
         execute("commit; -- T2") // 'Custom("Mutation failed due to concurrent update at src/server.rs:368")' at src/server.rs:797
         assertQuery("select * from test; -- either. Shows 1 => 12, 2 => 22")
     }
+
+    @Test
+    fun g1a() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("update test set value = 101 where id = 1; -- T1")
+        assertQuery("select * from test; -- T2. Still shows 1 => 10")
+        execute("rollback;  -- T1")
+        assertQuery("select * from test; -- T2. Still shows 1 => 10")
+        execute("commit; -- T2")
+    }
+    
 }
