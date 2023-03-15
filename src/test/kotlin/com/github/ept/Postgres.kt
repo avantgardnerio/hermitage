@@ -3,15 +3,26 @@ package com.github.ept
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.sql.Connection
-import java.sql.Statement
-import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class Postgres : Base() {
+class Postgres : Base(
+    org.postgresql.Driver(),
+    "jdbc:postgresql://localhost:5432/postgres?user=postgres&password="
+) {
+    @BeforeEach
+    fun setup() {
+        stmts[0].execute("drop table if exists test")
+        stmts[0].execute("create table test (id int primary key, value int)")
+        stmts[0].executeUpdate("insert into test (id, value) values (1, 10), (2, 20)")
+    }
+
+    @AfterEach
+    fun cleanup() {
+        stmts.forEach { it.execute("abort") }
+    }
+
     @Test
     fun g0() {
         val wasCalled = AtomicBoolean(false)
@@ -353,5 +364,5 @@ class Postgres : Base() {
         assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
         execute("abort; -- T1. There's nothing else we can do, this transaction has failed")
     }
-    
+
 }

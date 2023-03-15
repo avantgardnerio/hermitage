@@ -3,6 +3,7 @@ package com.github.ept
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import java.sql.Connection
+import java.sql.Driver
 import java.sql.Statement
 import java.util.*
 import kotlin.test.assertEquals
@@ -11,29 +12,9 @@ open class Base {
     val cons: Array<Connection>
     val stmts: Array<Statement>
 
-    init {
-        val driver = org.postgresql.Driver()
-        // https://www.cockroachlabs.com/docs/releases/index.html#v22-2
-        // ./cockroach start-single-node --insecure
-        // jdbc:postgresql://127.0.0.1:26257/defaultdb?sslmode=disable
-        val url = "jdbc:postgresql://localhost:5432/postgres"
-        val props = Properties()
-        props.setProperty("user", "postgres")
-        props.setProperty("password", "")
-        cons = (0 until 3).map { driver.connect(url, props)!! }.toTypedArray()
+    constructor(driver: Driver, url: String) {
+        cons = (0 until 3).map { driver.connect(url, Properties())!! }.toTypedArray()
         stmts = cons.map { it.createStatement() }.toTypedArray()
-    }
-
-    @BeforeEach
-    fun setup() {
-        stmts[0].execute("drop table if exists test")
-        stmts[0].execute("create table test (id int primary key, value int)")
-        stmts[0].executeUpdate("insert into test (id, value) values (1, 10), (2, 20)")
-    }
-
-    @AfterEach
-    fun cleanup() {
-        stmts.forEach { it.execute("abort") }
     }
 
     fun execute(sql: String) {

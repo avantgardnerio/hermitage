@@ -10,8 +10,8 @@ repositories {
 }
 
 dependencies {
-    // https://mvnrepository.com/artifact/org.postgresql/postgresql
     implementation("org.postgresql:postgresql:42.5.4")
+    implementation("org.apache.arrow:flight-sql-jdbc-driver:11.0.0")
 
     testImplementation(kotlin("test"))
 }
