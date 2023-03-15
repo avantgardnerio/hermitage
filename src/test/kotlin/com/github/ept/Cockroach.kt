@@ -50,4 +50,24 @@ class Cockroach : Base(
         execute("commit; -- T2")
         assertQuery("select * from test; -- either. Shows 1 => 12, 2 => 22")
     }
+
+    // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1c-circular-information-flow
+    @Test // fail
+    fun `g1c - circular information flow`() {
+        execute("begin; -- T1")
+        execute("begin; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 22 where id = 2; -- T2")
+        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
+        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10") // blocks forever
+        execute("commit; -- T1")
+        var ex: Exception? = null
+        try {
+            execute("commit; -- T2")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("failed preemptive refresh"))
+    }
+
 }
