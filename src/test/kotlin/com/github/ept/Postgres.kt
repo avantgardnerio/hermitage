@@ -83,6 +83,34 @@ class Postgres : Base(
     }
 
     @Test
+    fun otv() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("begin; set transaction isolation level read committed; -- T3")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 19 where id = 2; -- T1")
+
+        val t2 = Thread {
+            execute("update test set value = 12 where id = 1; -- T2. BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+
+        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 11")
+        execute("update test set value = 18 where id = 2; -- T2")
+        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 19")
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 18")
+        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 12")
+        execute("commit; -- T3")
+    }
+
+    @Test
     fun `pmp - ReadCommitted write predicate`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
@@ -173,34 +201,6 @@ class Postgres : Base(
         assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
 
         execute("abort;  -- T2. There's nothing else we can do, this transaction has failed")
-    }
-
-    @Test
-    fun otv() {
-        val wasCalled = AtomicBoolean(false)
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
-        execute("begin; set transaction isolation level read committed; -- T3")
-        execute("update test set value = 11 where id = 1; -- T1")
-        execute("update test set value = 19 where id = 2; -- T1")
-
-        val t2 = Thread {
-            execute("update test set value = 12 where id = 1; -- T2. BLOCKS")
-            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
-        }
-        t2.start()
-        Thread.sleep(500)
-        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
-        execute("commit; -- T1. This unblocks T2")
-        t2.join()
-
-        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 11")
-        execute("update test set value = 18 where id = 2; -- T2")
-        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 19")
-        execute("commit; -- T2")
-        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 18")
-        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 12")
-        execute("commit; -- T3")
     }
 
     @Test

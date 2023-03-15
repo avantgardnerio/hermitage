@@ -55,8 +55,8 @@ class FlightSql : Base(
 
     @Test
     fun g1b() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
         execute("update test set value = 101 where id = 1; -- T1")
         assertQuery("select * from test; -- T2. Still shows 1 => 10")
         execute("update test set value = 11 where id = 1; -- T1")
@@ -67,14 +67,43 @@ class FlightSql : Base(
 
     @Test
     fun g1c() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
         assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
         assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
         execute("commit; -- T1")
         execute("commit; -- T2")
+    }
+
+    @Test
+    fun otv() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("begin transaction isolation level serializable; -- T3")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 19 where id = 2; -- T1")
+
+        val t2 = Thread {
+            // 'Custom("Mutation failed due to concurrent update at src/server.rs:368")' at src/server.rs:797
+            execute("update test set value = 12 where id = 1; -- T2. BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+
+        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 11")
+        execute("update test set value = 18 where id = 2; -- T2")
+        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 19") // 2 => 18
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 18")
+        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 12")
+        execute("commit; -- T3")
     }
 
 }
