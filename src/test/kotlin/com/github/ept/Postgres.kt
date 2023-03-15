@@ -72,15 +72,21 @@ class Postgres : Base(
     }
 
     @Test
-    fun g1c() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
+    fun `g1c - circular information flow should be prevented`() {
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("begin; set transaction isolation level serializable; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
         assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
         assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
         execute("commit; -- T1")
-        execute("commit; -- T2")
+        var ex: Exception? = null
+        try {
+            execute("commit; -- T2")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
     // ------------------- otv

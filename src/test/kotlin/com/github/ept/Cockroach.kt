@@ -59,8 +59,8 @@ class Cockroach : Base(
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
         assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
-        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10") // blocks forever
         execute("commit; -- T1")
+        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 11")
         var ex: Exception? = null
         try {
             execute("commit; -- T2")
