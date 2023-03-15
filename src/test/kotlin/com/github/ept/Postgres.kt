@@ -23,6 +23,7 @@ class Postgres : Base(
         stmts.forEach { it.execute("abort") }
     }
 
+    // --------------------- general
     @Test
     fun g0() {
         val wasCalled = AtomicBoolean(false)
@@ -82,6 +83,7 @@ class Postgres : Base(
         execute("commit; -- T2")
     }
 
+    // ------------------- otv
     @Test
     fun otv() {
         val wasCalled = AtomicBoolean(false)
@@ -110,6 +112,7 @@ class Postgres : Base(
         execute("commit; -- T3")
     }
 
+    // ------------------------- pmp
     @Test
     fun `pmp - ReadCommitted write predicate`() {
         val wasCalled = AtomicBoolean(false)
@@ -133,8 +136,8 @@ class Postgres : Base(
     @Test
     fun `pmp - RepeatableRead write predicate`() {
         val wasCalled = AtomicBoolean(false)
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
         execute("update test set value = value + 10; -- T1")
 
         val t2 = Thread {
