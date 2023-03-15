@@ -48,6 +48,41 @@ class Postgres : Base(
     }
 
     @Test
+    fun g1a() {
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("update test set value = 101 where id = 1; -- T1")
+        assertQuery("select * from test; -- T2. Still shows 1 => 10")
+        execute("abort;  -- T1")
+        assertQuery("select * from test; -- T2. Still shows 1 => 10")
+        execute("commit; -- T2")
+    }
+
+    @Test
+    fun g1b() {
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("update test set value = 101 where id = 1; -- T1")
+        assertQuery("select * from test; -- T2. Still shows 1 => 10")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("commit; -- T1")
+        assertQuery("select * from test; -- T2. Now shows 1 => 11")
+        execute("commit; -- T2")
+    }
+
+    @Test
+    fun g1c() {
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 22 where id = 2; -- T2")
+        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
+        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
+        execute("commit; -- T1")
+        execute("commit; -- T2")
+    }
+
+    @Test
     fun `pmp - ReadCommitted write predicate`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
@@ -166,41 +201,6 @@ class Postgres : Base(
         assertQuery("select * from test where id = 2; -- T3. Shows 2 => 18")
         assertQuery("select * from test where id = 1; -- T3. Shows 1 => 12")
         execute("commit; -- T3")
-    }
-
-    @Test
-    fun g1a() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
-        execute("update test set value = 101 where id = 1; -- T1")
-        assertQuery("select * from test; -- T2. Still shows 1 => 10")
-        execute("abort;  -- T1")
-        assertQuery("select * from test; -- T2. Still shows 1 => 10")
-        execute("commit; -- T2")
-    }
-
-    @Test
-    fun g1b() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
-        execute("update test set value = 101 where id = 1; -- T1")
-        assertQuery("select * from test; -- T2. Still shows 1 => 10")
-        execute("update test set value = 11 where id = 1; -- T1")
-        execute("commit; -- T1")
-        assertQuery("select * from test; -- T2. Now shows 1 => 11")
-        execute("commit; -- T2")
-    }
-
-    @Test
-    fun g1c() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
-        execute("update test set value = 11 where id = 1; -- T1")
-        execute("update test set value = 22 where id = 2; -- T2")
-        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
-        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
-        execute("commit; -- T1")
-        execute("commit; -- T2")
     }
 
     @Test

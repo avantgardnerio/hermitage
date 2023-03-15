@@ -37,6 +37,7 @@ class FlightSql : Base(
 
         assertQuery("select * from test; -- T1. Shows 1 => 11, 2 => 21")
         execute("update test set value = 22 where id = 2; -- T2")
+        // T2 should commit because it never read the value that T1 updated, so there is no dependency
         execute("commit; -- T2") // 'Custom("Mutation failed due to concurrent update at src/server.rs:368")' at src/server.rs:797
         assertQuery("select * from test; -- either. Shows 1 => 12, 2 => 22")
     }
