@@ -14,7 +14,7 @@ class Postgres : Base(
     @BeforeEach
     fun setup() {
         stmts[0].execute("drop table if exists test")
-        stmts[0].execute("create table test (id int primary key, value int)")
+        stmts[0].execute("create table test (id int, value int)")
         stmts[0].executeUpdate("insert into test (id, value) values (1, 10), (2, 20)")
     }
 
@@ -93,9 +93,10 @@ class Postgres : Base(
     fun `g1c - read then write`() {
         execute("begin; set transaction isolation level serializable; -- T1")
         execute("begin; set transaction isolation level serializable; -- T2")
-        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
-        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
-        execute("update test set value = 11 where id = 1; -- T1")
+        assertQuery("select * from test where id % 2 = 0; -- T1. Still shows 2 => 20")
+        assertQuery("select * from test where id % 2 = 1; -- T2. Still shows 1 => 10")
+        execute("insert into test (id, value) values (3, 30); -- T1")
+//        execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
         execute("commit; -- T1")
         var ex: Exception? = null
