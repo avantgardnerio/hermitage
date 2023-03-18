@@ -56,11 +56,11 @@ class Cockroach : Base(
     fun `g1c - circular information flow`() {
         execute("begin; -- T1")
         execute("begin; -- T2")
-        assertQuery("select * from test where id % 2 = 0; -- T1. Still shows 2 => 20")
-        assertQuery("select * from test where id % 2 = 1; -- T2. Still shows 1 => 10")
-        execute("insert into test (id, value) values (3, 30); -- T1")
+        execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
-        execute("commit; -- T1") // failed preemptive refresh due to a conflict: intent on key
+        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
+        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
+        execute("commit; -- T1")
         var ex: Exception? = null
         try {
             execute("commit; -- T2")

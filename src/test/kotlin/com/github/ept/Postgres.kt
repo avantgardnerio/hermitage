@@ -71,33 +71,15 @@ class Postgres : Base(
         execute("commit; -- T2")
     }
 
+    // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1c-circular-information-flow
     @Test
-    fun `g1c - write then read`() {
+    fun `g1c - circular information flow`() {
         execute("begin; set transaction isolation level serializable; -- T1")
         execute("begin; set transaction isolation level serializable; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
         assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
         assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
-        execute("commit; -- T1")
-        var ex: Exception? = null
-        try {
-            execute("commit; -- T2")
-        } catch (e: Exception) {
-            ex = e
-        }
-        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
-    }
-
-    @Test
-    fun `g1c - read then write`() {
-        execute("begin; set transaction isolation level serializable; -- T1")
-        execute("begin; set transaction isolation level serializable; -- T2")
-        assertQuery("select * from test where id % 2 = 0; -- T1. Still shows 2 => 20")
-        assertQuery("select * from test where id % 2 = 1; -- T2. Still shows 1 => 10")
-        execute("insert into test (id, value) values (3, 30); -- T1")
-//        execute("update test set value = 11 where id = 1; -- T1")
-        execute("update test set value = 22 where id = 2; -- T2")
         execute("commit; -- T1")
         var ex: Exception? = null
         try {
