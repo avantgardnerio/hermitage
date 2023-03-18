@@ -74,12 +74,12 @@ class FlightSql : Base(
         execute("begin transaction isolation level serializable; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 22 where id = 2; -- T2")
-        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20")
-        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10")
-        execute("commit; -- T1")
+        assertQuery("select * from test where id = 2; -- T1. Still shows 2 => 20") // mark conflict due to newer version
+        assertQuery("select * from test where id = 1; -- T2. Still shows 1 => 10") // mark conflict due to newer version
+        execute("commit; -- T1") // not both in and out? commit?
         var ex: Exception? = null
         try {
-            execute("commit; -- T2")
+            execute("commit; -- T2") // in and out marked - rollback
         } catch (e: Exception) {
             ex = e
         }
