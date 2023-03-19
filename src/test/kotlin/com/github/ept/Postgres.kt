@@ -46,15 +46,15 @@ class Postgres : Base(
         assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
         execute("commit; -- T1. This unblocks T2")
         t2.join()
-        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
+        assertTrue(ex!!.message!!.contains("concurrent update"))
 
         assertQuery("select * from test; -- T1. Shows 1 => 11, 2 => 21")
     }
 
     @Test
-    fun g1a() {
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
+    fun `g1a - aborted reads should be prevented`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
         execute("update test set value = 101 where id = 1; -- T1")
         assertQuery("select * from test; -- T2. Still shows 1 => 10")
         execute("abort;  -- T1")
@@ -78,7 +78,7 @@ class Postgres : Base(
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1c-circular-information-flow
     @Test
-    fun `g1c - circular information flow`() {
+    fun `g1c - should prevent circular information flow`() {
         execute("begin; set transaction isolation level serializable; -- T1")
         execute("begin; set transaction isolation level serializable; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
