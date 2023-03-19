@@ -21,8 +21,8 @@ class FlightSql : Base(
     @Test // pass
     fun g0() {
         val wasCalled = AtomicBoolean(false)
-        execute("begin; -- T1")
-        execute("begin; -- T2")
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
         execute("update test set value = 11 where id = 1; -- T1")
 
         val t2 = Thread {
