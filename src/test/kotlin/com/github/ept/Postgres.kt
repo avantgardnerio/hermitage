@@ -130,7 +130,7 @@ class Postgres : Base(
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 19 where id = 2; -- T1")
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
-        execute("commit; -- T1. This unblocks T2")
+        execute("commit; -- T1")
 
         execute("update test set value = 12 where id = 1; -- T2")
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")

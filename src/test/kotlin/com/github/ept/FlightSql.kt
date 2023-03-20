@@ -20,6 +20,9 @@ class FlightSql : Base(
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g0-dirty-writes
     @Test // pass
     fun `g0 - should not allow dirty writes`() {
+        // T1 ----W(1=11)-W(2=21)-c1-R(x=11,y=21)--
+        // T2 -----------------------W(1=12)-------
+
         val wasCalled = AtomicBoolean(false)
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -98,7 +101,7 @@ class FlightSql : Base(
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 19 where id = 2; -- T1")
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
-        execute("commit; -- T1. This unblocks T2")
+        execute("commit; -- T1")
 
         execute("update test set value = 12 where id = 1; -- T2")
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
@@ -196,7 +199,7 @@ class FlightSql : Base(
     }
 
     @Test
-    fun `G-single - RepeatableRead prevents Read Skew with write predicate`() {
+    fun `G-single - serializable prevents Read Skew with write predicate`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
         execute("select * from test where id = 1; -- T1. Shows 1 => 10")
@@ -210,7 +213,7 @@ class FlightSql : Base(
         } catch (e: Exception) {
             ex = e
         }
-        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
+        assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }
 
 }
