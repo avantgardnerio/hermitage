@@ -142,43 +142,38 @@ class Postgres : Base(
     // ------------------------- pmp
     @Test
     fun `pmp - ReadCommitted write predicate`() {
-        val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
-        execute("update test set value = value + 10; -- T1")
-        val t2 = Thread {
-            execute("delete from test where value = 20;  -- T2, BLOCKS")
-            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
-        }
-        t2.start()
-        Thread.sleep(500)
-        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
-        execute("commit; -- T1. This unblocks T2")
-        t2.join()
 
-        assertQuery("select * from test where value = 20; -- T2, returns 1 => 20 (despite ostensibly having been deleted)")
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
         execute("commit; -- T2")
+
+        assertQuery("select * from test where value % 3 = 0; -- T1. 3 => 30") // shouldn't return this
     }
 
     @Test
     fun `pmp - RepeatableRead write predicate`() {
-        val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level repeatable read; -- T1")
         execute("begin; set transaction isolation level repeatable read; -- T2")
-        execute("update test set value = value + 10; -- T1")
 
-        val t2 = Thread {
-            execute("delete from test where value = 20;  -- T2, BLOCKS")
-            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
-        }
-        t2.start()
-        Thread.sleep(500)
-        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
-        execute("commit; -- T1. This unblocks T2")
-        t2.join()
-
-        assertQuery("select * from test where value = 20; -- T2, returns 1 => 20 (despite ostensibly having been deleted)")
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
         execute("commit; -- T2")
+
+        assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
+    }
+
+    @Test
+    fun `pmp - Serializable write predicate`() {
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("begin; set transaction isolation level serializable; -- T2")
+
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
+        execute("commit; -- T2")
+
+        assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
     }
 
     @Test

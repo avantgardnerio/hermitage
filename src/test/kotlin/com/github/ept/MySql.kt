@@ -81,4 +81,31 @@ class MySql : Base(
         assertQuery("select * from test; -- T3. Shows 1 => 12, 2 => 18")
     }
 
+    @Test
+    fun `pmp - read committed does not prevent pmp`() {
+        execute("set session transaction isolation level read committed; -- T1")
+        execute("set session transaction isolation level read committed; -- T2")
+        execute("start transaction; -- T1")
+        execute("start transaction; -- T2")
+
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
+        execute("commit; -- T2")
+
+        assertQuery("select * from test where value % 3 = 0; -- T1. 3 => 30") // shouldn't return this
+    }
+
+    @Test
+    fun `pmp - repeatable read prevents pmp`() {
+        execute("set session transaction isolation level repeatable read; -- T1")
+        execute("set session transaction isolation level repeatable read; -- T2")
+        execute("start transaction; -- T1")
+        execute("start transaction; -- T2")
+
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
+        execute("commit; -- T2")
+
+        assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
+    }
 }

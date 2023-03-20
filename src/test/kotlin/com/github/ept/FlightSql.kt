@@ -107,4 +107,15 @@ class FlightSql : Base(
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
     }
 
+    @Test
+    fun `pmp - Serializable write predicate`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+
+        assertQuery("select * from test where value = 30; -- T1. Returns nothing")
+        execute("insert into test (id, value) values(3, 30); -- T2")
+        execute("commit; -- T2")
+
+        assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
+    }
 }
