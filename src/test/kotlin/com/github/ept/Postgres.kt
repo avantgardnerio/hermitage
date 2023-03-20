@@ -115,13 +115,11 @@ class Postgres : Base(
         execute("commit; -- T1. This unblocks T2")
         t2.join()
 
-        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 11")
+        assertQuery("select * from test; -- T3. Shows 1 => 11, 2 => 19")
         execute("update test set value = 18 where id = 2; -- T2")
-        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 19")
+        assertQuery("select * from test; -- T3. Shows 1 => 11, 2 => 19")
         execute("commit; -- T2")
-        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 18")
-        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 12")
-        execute("commit; -- T3")
+        assertQuery("select * from test; -- T3. Shows 1 => 12, 2 => 18")
     }
 
     // ------------------------- pmp
