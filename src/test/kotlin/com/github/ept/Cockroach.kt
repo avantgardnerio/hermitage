@@ -70,4 +70,47 @@ class Cockroach : Base(
         assertTrue(ex!!.message!!.contains("failed preemptive refresh"))
     }
 
+    @Test
+    fun `otv - should prevent observed values from vanishing`() {
+        val wasCalled = AtomicBoolean(false)
+        Thread.sleep(1000) // cockroach appears to have races. Sleeps are necessary for reliable results
+        execute("begin; set transaction isolation level serializable; -- T1")
+        Thread.sleep(1000)
+        execute("begin; set transaction isolation level serializable; -- T2")
+        Thread.sleep(1000)
+        execute("begin; set transaction isolation level serializable; -- T3")
+        Thread.sleep(1000)
+        execute("update test set value = 11 where id = 1; -- T1")
+        Thread.sleep(1000)
+        execute("update test set value = 19 where id = 2; -- T1")
+        Thread.sleep(1000)
+
+        val t2 = Thread {
+            execute("update test set value = 12 where id = 1; -- T2. BLOCKS")
+            Thread.sleep(1000)
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(1000)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        Thread.sleep(1000)
+        t2.join()
+
+        Thread.sleep(1000)
+        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 11")
+        Thread.sleep(1000)
+        execute("update test set value = 18 where id = 2; -- T2")
+        Thread.sleep(1000)
+        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 19")
+        Thread.sleep(1000)
+        execute("commit; -- T2")
+        Thread.sleep(1000)
+        assertQuery("select * from test where id = 2; -- T3. Shows 2 => 19")
+        Thread.sleep(1000)
+        assertQuery("select * from test where id = 1; -- T3. Shows 1 => 11")
+        Thread.sleep(1000)
+        execute("commit; -- T3")
+    }
+
 }
