@@ -142,5 +142,32 @@ class FlightSql : Base(
         t2.join()
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }
-    
+
+    @Test
+    fun `p4 - serializable`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("select * from test where id = 1; -- T1")
+        execute("select * from test where id = 1; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+
+        var ex: Exception? = null
+        val t2 = Thread {
+            try {
+                execute("update test set value = 12 where id = 1; -- T2, BLOCKS")
+            } catch (e: Exception) {
+                ex = e
+            }
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+            // TODO: assertions in thread only log, they don't break the tests!
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. T2 now prints out ERROR: could not serialize access due to concurrent update")
+        t2.join()
+        assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
+    }
+
 }

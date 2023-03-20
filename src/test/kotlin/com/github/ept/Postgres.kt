@@ -221,58 +221,6 @@ class Postgres : Base(
     }
 
     @Test
-    fun `p4 - ReadCommitted`() {
-        val wasCalled = AtomicBoolean(false)
-        execute("begin; set transaction isolation level read committed; -- T1")
-        execute("begin; set transaction isolation level read committed; -- T2")
-        execute("select * from test where id = 1; -- T1")
-        execute("select * from test where id = 1; -- T2")
-        execute("update test set value = 11 where id = 1; -- T1")
-
-        val t2 = Thread {
-            execute("update test set value = 11 where id = 1; -- T2, BLOCKS")
-            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
-        }
-        t2.start()
-        Thread.sleep(500)
-        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
-        execute("commit; -- T1. This unblocks T2, so T1's update is overwritten")
-        t2.join()
-
-        execute("commit; -- T2")
-        assertQuery("select * from test where id = 1; -- either 1 => 11")
-    }
-
-    @Test
-    fun `p4 - RepeatableRead`() {
-        val wasCalled = AtomicBoolean(false)
-        execute("begin; set transaction isolation level repeatable read; -- T1")
-        execute("begin; set transaction isolation level repeatable read; -- T2")
-        execute("select * from test where id = 1; -- T1")
-        execute("select * from test where id = 1; -- T2")
-        execute("update test set value = 11 where id = 1; -- T1")
-
-        var ex: Exception? = null
-        val t2 = Thread {
-            try {
-                execute("update test set value = 11 where id = 1; -- T2, BLOCKS")
-            } catch (e: Exception) {
-                ex = e
-            }
-            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
-            // TODO: assertions in thread only log, they don't break the tests!
-        }
-        t2.start()
-        Thread.sleep(500)
-        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
-        execute("commit; -- T1. T2 now prints out ERROR: could not serialize access due to concurrent update")
-        t2.join()
-        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
-
-        execute("abort;  -- T2. There's nothing else we can do, this transaction has failed")
-    }
-
-    @Test
     fun `pmp - ReadCommitted`() {
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -292,6 +240,56 @@ class Postgres : Base(
         execute("commit; -- T2")
         assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
         execute("commit; -- T1")
+    }
+
+    @Test
+    fun `p4 - ReadCommitted`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("select * from test where id = 1; -- T1")
+        execute("select * from test where id = 1; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+
+        val t2 = Thread {
+            execute("update test set value = 12 where id = 1; -- T2, BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2, so T1's update is overwritten")
+        t2.join()
+
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 1; -- either 1 => 12")
+    }
+
+    @Test
+    fun `p4 - RepeatableRead`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level repeatable read; -- T1")
+        execute("begin; set transaction isolation level repeatable read; -- T2")
+        execute("select * from test where id = 1; -- T1")
+        execute("select * from test where id = 1; -- T2")
+        execute("update test set value = 11 where id = 1; -- T1")
+
+        var ex: Exception? = null
+        val t2 = Thread {
+            try {
+                execute("update test set value = 12 where id = 1; -- T2, BLOCKS")
+            } catch (e: Exception) {
+                ex = e
+            }
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+            // TODO: assertions in thread only log, they don't break the tests!
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. T2 now prints out ERROR: could not serialize access due to concurrent update")
+        t2.join()
+        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
     }
 
     @Test
