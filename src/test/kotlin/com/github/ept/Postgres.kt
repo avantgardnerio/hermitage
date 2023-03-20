@@ -97,7 +97,7 @@ class Postgres : Base(
 
     // ------------------- otv
     @Test
-    fun otv() {
+    fun `otv - observed values do not vanish in read committed`() {
         val wasCalled = AtomicBoolean(false)
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
@@ -120,6 +120,23 @@ class Postgres : Base(
         assertQuery("select * from test; -- T3. Shows 1 => 11, 2 => 19")
         execute("commit; -- T2")
         assertQuery("select * from test; -- T3. Shows 1 => 12, 2 => 18")
+    }
+
+    @Test
+    fun `otv - observed values do not vanish in serializable`() {
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("begin; set transaction isolation level serializable; -- T2")
+        execute("begin; set transaction isolation level serializable; -- T3")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 19 where id = 2; -- T1")
+        assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
+        execute("commit; -- T1. This unblocks T2")
+
+        execute("update test set value = 12 where id = 1; -- T2")
+        assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
+        execute("commit; -- T2")
+
+        assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
     }
 
     // ------------------------- pmp
