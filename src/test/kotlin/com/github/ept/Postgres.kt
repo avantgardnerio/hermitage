@@ -342,12 +342,11 @@ class Postgres : Base(
         execute("commit; -- T2")
         var ex: Exception? = null
         try {
-            execute("delete from test where value = 20; -- T1. Prints ERROR: could not serialize access due to concurrent update")
+            execute("delete from test where value = 20; -- T1. Prints ERROR: ... concurrent update")
         } catch (e: Exception) {
             ex = e
         }
         assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
-        execute("abort; -- T1. There's nothing else we can do, this transaction has failed")
     }
 
     @Test

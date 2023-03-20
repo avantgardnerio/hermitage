@@ -170,4 +170,47 @@ class FlightSql : Base(
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }
 
+    @Test
+    fun `G-single - serializable prevents Read Skew`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        assertQuery("select * from test where id = 1; -- T1. Shows 1 => 10")
+        execute("select * from test where id = 1; -- T2")
+        execute("select * from test where id = 2; -- T2")
+        execute("update test set value = 12 where id = 1; -- T2")
+        execute("update test set value = 18 where id = 2; -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 2; -- T1. Shows 2 => 20")
+        execute("commit; -- T1")
+    }
+
+    @Test
+    fun `G-single - serializable prevents Read Skew with predicate`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("select * from test where value % 5 = 0; -- T1")
+        execute("update test set value = 12 where value = 10; -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where value % 3 = 0; -- T1. Returns nothing")
+        execute("commit; -- T1")
+    }
+
+    @Test
+    fun `G-single - RepeatableRead prevents Read Skew with write predicate`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("select * from test where id = 1; -- T1. Shows 1 => 10")
+        execute("select * from test; -- T2")
+        execute("update test set value = 12 where id = 1; -- T2")
+        execute("update test set value = 18 where id = 2; -- T2")
+        execute("commit; -- T2")
+        var ex: Exception? = null
+        try {
+            execute("delete from test where value = 20; -- T1. Prints ERROR: ... concurrent update")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
+    }
+
 }
