@@ -26,7 +26,7 @@ class MySql : Base(
 
     // --------------------- general
     @Test
-    fun `otv - observed values from vanish in read uncommitted`() {
+    fun `otv - observed values vanish in read uncommitted`() {
         val wasCalled = AtomicBoolean(false)
         execute("set session transaction isolation level read uncommitted; -- T1")
         execute("set session transaction isolation level read uncommitted; -- T2")
@@ -49,6 +49,35 @@ class MySql : Base(
 
         assertQuery("select * from test; -- T3. Shows 1 => 12, 2 => 19")
         execute("update test set value = 18 where id = 2; -- T2")
+        assertQuery("select * from test; -- T3. Shows 1 => 12, 2 => 18") // 19 "vanished"
+    }
+
+    @Test
+    fun `otv - observed values do not vanish in read committed`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("set session transaction isolation level read committed; -- T1")
+        execute("set session transaction isolation level read committed; -- T2")
+        execute("set session transaction isolation level read committed; -- T3")
+        execute("start transaction; -- T1")
+        execute("start transaction; -- T2")
+        execute("start transaction; -- T3")
+        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 19 where id = 2; -- T1")
+
+        val t2 = Thread {
+            execute("update test set value = 12 where id = 1; -- T2. BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+
+        assertQuery("select * from test; -- T3. Shows 1 => 11, 2 => 19")
+        execute("update test set value = 18 where id = 2; -- T2")
+        assertQuery("select * from test; -- T3. Shows 1 => 11, 2 => 19")
+        execute("commit; -- T2")
         assertQuery("select * from test; -- T3. Shows 1 => 12, 2 => 18")
     }
 
