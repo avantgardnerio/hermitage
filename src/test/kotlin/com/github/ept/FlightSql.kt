@@ -72,7 +72,7 @@ class FlightSql : Base(
     }
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1c-circular-information-flow
-    @Test
+    @Test // pass
     fun `g1c - should prevent circular information flow`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -87,7 +87,7 @@ class FlightSql : Base(
         } catch (e: Exception) {
             ex = e
         }
-        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
+        assertTrue(ex!!.cause!!.cause!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
 }
