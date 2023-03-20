@@ -118,4 +118,29 @@ class FlightSql : Base(
 
         assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
     }
+
+    @Test
+    fun `pmp - serializable write predicate`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("update test set value = value + 10; -- T1")
+
+        var ex: Exception? = null
+        val t2 = Thread {
+            try {
+                execute("delete from test where value = 20;  -- T2, BLOCKS")
+            } catch (e: Exception) {
+                ex = e
+            }
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+        assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
+    }
+    
 }

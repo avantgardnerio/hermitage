@@ -141,7 +141,7 @@ class Postgres : Base(
 
     // ------------------------- pmp
     @Test
-    fun `pmp - ReadCommitted write predicate`() {
+    fun `pmp - ReadCommitted read predicate`() {
         execute("begin; set transaction isolation level read committed; -- T1")
         execute("begin; set transaction isolation level read committed; -- T2")
 
@@ -153,7 +153,7 @@ class Postgres : Base(
     }
 
     @Test
-    fun `pmp - RepeatableRead write predicate`() {
+    fun `pmp - RepeatableRead read predicate`() {
         execute("begin; set transaction isolation level repeatable read; -- T1")
         execute("begin; set transaction isolation level repeatable read; -- T2")
 
@@ -165,7 +165,7 @@ class Postgres : Base(
     }
 
     @Test
-    fun `pmp - Serializable write predicate`() {
+    fun `pmp - Serializable read predicate`() {
         execute("begin; set transaction isolation level serializable; -- T1")
         execute("begin; set transaction isolation level serializable; -- T2")
 
@@ -174,6 +174,50 @@ class Postgres : Base(
         execute("commit; -- T2")
 
         assertQuery("select * from test where value % 3 = 0; -- T1. Still returns nothing")
+    }
+
+    @Test
+    fun `pmp - ReadCommitted write predicate`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level read committed; -- T1")
+        execute("begin; set transaction isolation level read committed; -- T2")
+        execute("update test set value = value + 10; -- T1")
+        val t2 = Thread {
+            execute("delete from test where value = 20;  -- T2, BLOCKS")
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+
+        assertQuery("select * from test where value = 20; -- T2, returns 1 => 20 (despite ostensibly having been deleted)")
+        execute("commit; -- T2")
+    }
+
+    @Test
+    fun `pmp - serializable write predicate`() {
+        val wasCalled = AtomicBoolean(false)
+        execute("begin; set transaction isolation level serializable; -- T1")
+        execute("begin; set transaction isolation level serializable; -- T2")
+        execute("update test set value = value + 10; -- T1")
+
+        var ex: Exception? = null
+        val t2 = Thread {
+            try {
+                execute("delete from test where value = 20;  -- T2, BLOCKS")
+            } catch (e: Exception) {
+                ex = e
+            }
+            assertTrue(wasCalled.get(), "t1 should have committed before t2 update complete!")
+        }
+        t2.start()
+        Thread.sleep(500)
+        assertFalse(wasCalled.getAndSet(true), "t2 should not have updated until t1 commits!")
+        execute("commit; -- T1. This unblocks T2")
+        t2.join()
+        assertTrue(ex!!.message!!.contains("could not serialize access due to concurrent update"))
     }
 
     @Test
