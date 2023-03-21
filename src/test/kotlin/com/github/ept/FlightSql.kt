@@ -198,7 +198,7 @@ class FlightSql : Base(
         execute("commit; -- T1")
     }
 
-    @Test // fail
+    @Test
     fun `G-single - serializable prevents Read Skew with write predicate`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -211,7 +211,7 @@ class FlightSql : Base(
         try {
             execute("delete from test where value = 20; -- T1. Prints ERROR: ... concurrent update")
         } catch (e: Exception) {
-            ex = e // no exception
+            ex = e
         }
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }
