@@ -103,7 +103,7 @@ class FlightSql : Base(
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
         execute("commit; -- T1")
 
-        execute("update test set value = 12 where id = 1; -- T2") // concurrent update at src/server.rs:347
+        execute("update test set value = 12 where id = 1; -- T2") // concurrent update
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
         execute("commit; -- T2")
 
@@ -252,7 +252,7 @@ class FlightSql : Base(
         assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
-    @Test
+    @Test // fail
     fun `G2 - Serializable prevents 2 edge Anti-Dependency Cycles`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("select * from test; -- T1. Shows 1 => 10, 2 => 20")
@@ -264,9 +264,9 @@ class FlightSql : Base(
         execute("commit; -- T3")
         var ex: Exception? = null
         try {
-            execute("update test set value = 0 where id = 1; -- T1. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+            execute("update test set value = 0 where id = 1; -- T1. read/write dependencies among transactions")
         } catch (e: Exception) {
-            ex = e
+            ex = e // did not detect
         }
         assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }

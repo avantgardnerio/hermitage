@@ -437,7 +437,7 @@ class Postgres : Base(
         execute("commit; -- T3")
         var ex: Exception? = null
         try {
-            execute("update test set value = 0 where id = 1; -- T1. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+            execute("update test set value = 0 where id = 1; -- T1. read/write dependencies among transactions")
         } catch (e: Exception) {
             ex = e
         }
