@@ -234,4 +234,41 @@ class FlightSql : Base(
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("due to read/write dependencies"))
     }
 
+    @Test
+    fun `G2 - Serializable prevents Anti-Dependency Cycles`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("select * from test where value % 3 = 0; -- T1")
+        execute("select * from test where value % 3 = 0; -- T2")
+        execute("insert into test (id, value) values(3, 30); -- T1")
+        execute("insert into test (id, value) values(4, 42); -- T2")
+        execute("commit; -- T1")
+        var ex: Exception? = null
+        try {
+            execute("commit; -- T2. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
+    }
+
+    @Test
+    fun `G2 - Serializable prevents 2 edge Anti-Dependency Cycles`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("select * from test; -- T1. Shows 1 => 10, 2 => 20")
+        execute("begin transaction isolation level serializable; -- T2")
+        execute("update test set value = value + 5 where id = 2; -- T2")
+        execute("commit; -- T2")
+        execute("begin transaction isolation level serializable; -- T3")
+        execute("select * from test; -- T3. Shows 1 => 10, 2 => 25")
+        execute("commit; -- T3")
+        var ex: Exception? = null
+        try {
+            execute("update test set value = 0 where id = 1; -- T1. Prints out ERROR: could not serialize access due to read/write dependencies among transactions")
+        } catch (e: Exception) {
+            ex = e
+        }
+        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
+    }
+
 }

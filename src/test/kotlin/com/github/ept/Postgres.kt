@@ -442,7 +442,6 @@ class Postgres : Base(
             ex = e
         }
         assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
-        execute("abort; -- T1. There's nothing else we can do, this transaction has failed")
     }
 
 }
