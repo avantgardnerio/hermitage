@@ -75,7 +75,7 @@ class FlightSql : Base(
     }
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1c-circular-information-flow
-    @Test // pass
+    @Test
     fun `g1c - should prevent circular information flow`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -184,10 +184,10 @@ class FlightSql : Base(
         execute("update test set value = 18 where id = 2; -- T2")
         execute("commit; -- T2")
         assertQuery("select * from test where id = 2; -- T1. Shows 2 => 20")
-        execute("commit; -- T1")  // Panicked))' at src/server.rs:841
+        execute("commit; -- T1") // read/write dependencies at src/server.rs:281
     }
 
-    @Test // fail
+    @Test 
     fun `G-single - serializable prevents Read Skew with predicate`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -195,7 +195,7 @@ class FlightSql : Base(
         execute("update test set value = 12 where value = 10; -- T2")
         execute("commit; -- T2")
         assertQuery("select * from test where value % 3 = 0; -- T1. Returns nothing")
-        execute("commit; -- T1")  // Panicked))' at src/server.rs:841
+        execute("commit; -- T1")
     }
 
     @Test
