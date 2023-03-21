@@ -93,16 +93,16 @@ class FlightSql : Base(
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
-    @Test // fail
+    @Test
     fun `otv - observed values do not vanish in serializable`() {
         execute("begin transaction isolation level serializable; -- T1")
-        execute("begin transaction isolation level serializable; -- T2")
         execute("begin transaction isolation level serializable; -- T3")
         execute("update test set value = 11 where id = 1; -- T1")
         execute("update test set value = 19 where id = 2; -- T1")
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
         execute("commit; -- T1")
 
+        execute("begin transaction isolation level serializable; -- T2") // TODO: lazy load read_ts
         execute("update test set value = 12 where id = 1; -- T2") // concurrent update
         assertQuery("select * from test; -- T3. Shows 1 => 10, 2 => 20")
         execute("commit; -- T2")
