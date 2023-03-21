@@ -49,7 +49,7 @@ class FlightSql : Base(
     }
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1a-aborted-reads-cascaded-aborts
-    @Test // pass
+    @Test 
     fun `g1a - aborted reads should be prevented`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -61,16 +61,16 @@ class FlightSql : Base(
     }
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1b-intermediate-reads-dirty-reads
-    @Test // fail
+    @Test
     fun `g1b - intermediate reads should be prevented`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
         execute("update test set value = 101 where id = 1; -- T1")
         assertQuery("select * from test; -- T2. Still shows 1 => 10")
-        execute("update test set value = 11 where id = 1; -- T1")
+        execute("update test set value = 11 where id = 1; -- T1") // TODO: can't insert twice with same ts
         execute("commit; -- T1")
         assertQuery("select * from test; -- T2. Still shows 1 => 10")
-        execute("commit; -- T2") // read/write dependencies at src/server.rs:281
+        execute("commit; -- T2") 
         assertQuery("select * from test; -- T2. Now shows 1 => 11")
     }
 
@@ -173,7 +173,7 @@ class FlightSql : Base(
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }
 
-    @Test // fail
+    @Test
     fun `G-single - serializable prevents Read Skew`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -184,7 +184,7 @@ class FlightSql : Base(
         execute("update test set value = 18 where id = 2; -- T2")
         execute("commit; -- T2")
         assertQuery("select * from test where id = 2; -- T1. Shows 2 => 20")
-        execute("commit; -- T1") // read/write dependencies at src/server.rs:281
+        execute("commit; -- T1") 
     }
 
     @Test 
@@ -198,7 +198,7 @@ class FlightSql : Base(
         execute("commit; -- T1")
     }
 
-    @Test
+    @Test // fail
     fun `G-single - serializable prevents Read Skew with write predicate`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("begin transaction isolation level serializable; -- T2")
@@ -211,7 +211,7 @@ class FlightSql : Base(
         try {
             execute("delete from test where value = 20; -- T1. Prints ERROR: ... concurrent update")
         } catch (e: Exception) {
-            ex = e
+            ex = e // no exception
         }
         assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }

@@ -321,6 +321,20 @@ class Postgres : Base(
     }
 
     @Test
+    fun `G-single - serializable prevents Read Skew`() {
+        execute("begin transaction isolation level serializable; -- T1")
+        execute("begin transaction isolation level serializable; -- T2")
+        assertQuery("select * from test where id = 1; -- T1. Shows 1 => 10")
+        execute("select * from test where id = 1; -- T2")
+        execute("select * from test where id = 2; -- T2")
+        execute("update test set value = 12 where id = 1; -- T2")
+        execute("update test set value = 18 where id = 2; -- T2")
+        execute("commit; -- T2")
+        assertQuery("select * from test where id = 2; -- T1. Shows 2 => 20")
+        execute("commit; -- T1")
+    }
+
+    @Test
     fun `G-single - RepeatableRead prevents Read Skew with predicate`() {
         execute("begin; set transaction isolation level repeatable read; -- T1")
         execute("begin; set transaction isolation level repeatable read; -- T2")
