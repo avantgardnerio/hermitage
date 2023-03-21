@@ -64,7 +64,7 @@ class Postgres : Base(
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g1b-intermediate-reads-dirty-reads
     @Test
-    fun `g1b - intermediate reads should be prevented`() {
+    fun `g1b - serializable should prevent intermediate reads`() {
         execute("begin; set transaction isolation level serializable; -- T1")
         execute("begin; set transaction isolation level serializable; -- T2")
         execute("update test set value = 101 where id = 1; -- T1")
