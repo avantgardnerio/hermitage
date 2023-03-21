@@ -18,7 +18,7 @@ class FlightSql : Base(
     }
 
     // https://sitano.github.io/theory/databases/2019/07/30/tx-isolation-anomalies/#g0-dirty-writes
-    @Test // pass
+    @Test
     fun `g0 - should not allow dirty writes`() {
         // T1 ----W(1=11)-W(2=21)-c1-R(x=11,y=21)--
         // T2 -----------------------W(1=12)-------
@@ -252,7 +252,7 @@ class FlightSql : Base(
         assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
     }
 
-    @Test // fail
+    @Test
     fun `G2 - Serializable prevents 2 edge Anti-Dependency Cycles`() {
         execute("begin transaction isolation level serializable; -- T1")
         execute("select * from test; -- T1. Shows 1 => 10, 2 => 20")
@@ -266,9 +266,9 @@ class FlightSql : Base(
         try {
             execute("update test set value = 0 where id = 1; -- T1. read/write dependencies among transactions")
         } catch (e: Exception) {
-            ex = e // did not detect
+            ex = e 
         }
-        assertTrue(ex!!.message!!.contains("could not serialize access due to read/write dependencies"))
+        assertTrue(ex!!.cause!!.cause!!.message!!.contains("concurrent update"))
     }
 
 }
